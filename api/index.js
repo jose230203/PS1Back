@@ -5,15 +5,19 @@ const cors = require('cors');
 
 const app = express();
 app.use(express.json());
-app.use(cors());
+
+app.use(cors({
+    origin: '*', 
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-app.post('/productos', async (req, res) => {
-    console.log("------------------------------------------");
-    console.log("RECIBIENDO PETICIÓN POST EN NODO LÓGICA");
+app.get('/', (req, res) => res.send("Nodo Lógica Managua - Operacional"));
+
+app.post('/api/productos', async (req, res) => {
     const { nombre, precio, stock, creado_por, descripcion } = req.body;
-    console.log("Datos:", { nombre, precio, stock, creado_por });
 
     if (!nombre || precio <= 0) {
         return res.status(400).json({ error: "Datos inválidos: Nombre obligatorio y precio > 0" });
@@ -21,28 +25,17 @@ app.post('/productos', async (req, res) => {
 
     const { data, error } = await supabase
         .from('productos')
-        .insert([{ 
-            nombre, 
-            precio, 
-            stock, 
-            creado_por, 
-            descripcion 
-        }])
+        .insert([{ nombre, precio, stock, creado_por, descripcion }])
         .select();
 
-    if (error) {
-        console.error("Error en Supabase:", error);
-        return res.status(400).json({ error: error.message });
-    }
-
+    if (error) return res.status(400).json({ error: error.message });
     res.status(201).json({ mensaje: "Producto creado exitosamente", data: data[0] });
 });
 
-app.put('/productos/:id', async (req, res) => {
+app.put('/api/productos/:id', async (req, res) => {
     const { id } = req.params;
     const { nombre, precio, stock, descripcion, version_cliente, userId } = req.body;
 
-    // 1. Verificamos quién es el dueño original en la base de datos
     const { data: productoOriginal } = await supabase
         .from('productos')
         .select('creado_por')
@@ -53,7 +46,6 @@ app.put('/productos/:id', async (req, res) => {
         return res.status(403).json({ error: "No autorizado: Solo el creador puede modificar este recurso." });
     }
 
-    // 2. Si es el dueño, procedemos con el update
     const { data, error } = await supabase
         .from('productos')
         .update({ 
@@ -67,7 +59,8 @@ app.put('/productos/:id', async (req, res) => {
     if (error) return res.status(400).json({ error: error.message });
     res.json({ mensaje: "Actualizado con éxito", data: data[0] });
 });
-app.get('/productos', async (req, res) => {
+
+app.get('/api/productos', async (req, res) => {
     try {
         const { data, error } = await supabase
             .from('productos')
@@ -80,10 +73,7 @@ app.get('/productos', async (req, res) => {
             .eq('esta_activo', true)
             .order('id', { ascending: false });
         
-        if (error) {
-            console.error("Error en el JOIN de la base de datos:", error);
-            return res.status(200).json([]);
-        }
+        if (error) return res.status(200).json([]);
 
         const productosConUser = (data || []).map(p => ({
             ...p,
@@ -92,14 +82,13 @@ app.get('/productos', async (req, res) => {
 
         res.json(productosConUser);
     } catch (e) {
-        console.error("Falla crítica en el Nodo de Lógica:", e);
         res.status(200).json([]); 
     }
 });
 
-app.patch('/productos/baja/:id', async (req, res) => {
+app.patch('/api/productos/baja/:id', async (req, res) => {
     const { id } = req.params;
-    const { userId } = req.body; // Recibimos el userId desde el body del PATCH
+    const { userId } = req.body; 
 
     const { data: producto } = await supabase
         .from('productos')
@@ -120,10 +109,5 @@ app.patch('/productos/baja/:id', async (req, res) => {
     res.json({ mensaje: "Baja lógica procesada" });
 });
 
-const PORT = process.env.PORT_BACKEND || 3001;
-app.listen(PORT, () => {
-    console.log(`==========================================`);
-    console.log(`SERVIDOR NODO LÓGICA: http://localhost:${PORT}`);
-    console.log(`CONECTADO A: ${process.env.SUPABASE_URL}`);
-    console.log(`==========================================`);
-});
+
+module.exports = app;
