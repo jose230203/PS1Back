@@ -31,25 +31,34 @@ app.post('/api/productos', async (req, res) => {
     if (error) return res.status(400).json({ error: error.message });
     res.status(201).json({ mensaje: "Producto creado exitosamente", data: data[0] });
 });
-
 app.put('/api/productos/:id', async (req, res) => {
     const { id } = req.params;
     const { nombre, precio, stock, descripcion, version_cliente, userId } = req.body;
 
-    const { data: productoOriginal } = await supabase
+    const { data: productoOriginal, error: errFetch } = await supabase
         .from('productos')
         .select('creado_por')
         .eq('id', id)
         .single();
 
-    if (!productoOriginal || productoOriginal.creado_por !== userId) {
-        return res.status(403).json({ error: "No autorizado: Solo el creador puede modificar este recurso." });
+    if (errFetch || !productoOriginal) {
+        return res.status(404).json({ error: "Producto no encontrado en el nodo." });
+    }
+
+    if (productoOriginal.creado_por !== userId) {
+        return res.status(403).json({ 
+            error: "No autorizado", 
+            detalles: "El ID del usuario no coincide con el creador del registro." 
+        });
     }
 
     const { data, error } = await supabase
         .from('productos')
         .update({ 
-            nombre, precio, stock, descripcion,
+            nombre, 
+            precio, 
+            stock, 
+            descripcion,
             version: version_cliente + 1,
             ultima_modificacion: new Date() 
         })
@@ -57,7 +66,12 @@ app.put('/api/productos/:id', async (req, res) => {
         .select(); 
 
     if (error) return res.status(400).json({ error: error.message });
-    res.json({ mensaje: "Actualizado con éxito", data: data[0] });
+    
+    if (data.length === 0) {
+        return res.status(409).json({ error: "Conflicto de versión: El registro fue modificado por otro nodo." });
+    }
+
+    res.json({ mensaje: "Sincronización exitosa", data: data[0] });
 });
 
 app.get('/api/productos', async (req, res) => {
